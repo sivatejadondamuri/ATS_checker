@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATS Pro | AI Resume Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .view-transition {
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Logic for "New page above old page" */
+        .hidden-view {
+            display: none;
+            opacity: 0;
+            transform: translateY(-20px); /* Slides up when hiding */
+        }
+
+        .active-view {
+            display: flex;
+            opacity: 1;
+            transform: translateY(0);
+            animation: slideDown 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .score-circle {
+            background: conic-gradient(#3b82f6 var(--progress), #e2e8f0 0deg);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .score-circle::after {
+            content: "";
+            position: absolute;
+            width: 82%;
+            height: 82%;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .card-shadow {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+        }
+
+        .custom-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+
+        @media (max-height: 800px) {
+            .view-padding { padding-top: 1rem; padding-bottom: 1rem; }
+            .hero-text { font-size: 2.25rem; line-height: 2.5rem; margin-bottom: 1rem; }
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-white/80 backdrop-blur-md border-b border-slate-200 py-3 px-8 shrink-0 z-50">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2 cursor-pointer" onclick="showView('uploadView')">
+                <div class="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-200">
+                    <i class="fas fa-file-contract text-white text-xs"></i>
+                </div>
+                <span class="font-extrabold text-lg tracking-tight text-slate-900">ATS<span class="text-blue-600">Checker</span></span>
+            </div>
+            <div id="navActions" class="hidden">
+                <button onclick="showView('uploadView')" class="px-4 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded-full transition-all">
+                    <i class="fas fa-plus mr-2"></i>New Analysis
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-1 overflow-hidden relative flex flex-col">
+        
+        <!-- View 2: Results Dashboard (Placed FIRST in DOM so it sits "Above") -->
+        <section id="resultsView" class="view-transition hidden-view flex-col h-full p-4 md:p-6 space-y-4">
+            
+            <!-- Horizontal Score Card (TOP) -->
+            <div class="bg-white rounded-3xl card-shadow p-6 border border-slate-100 shrink-0">
+                <div class="flex flex-col md:flex-row items-center justify-between gap-6 max-w-7xl mx-auto">
+                    <div class="flex items-center space-x-6">
+                        <div class="relative w-24 h-24 score-circle shrink-0" id="scoreCircle" style="--progress: 0deg;">
+                            <div class="z-10 text-center">
+                                <span id="scoreValue" class="text-3xl font-black text-slate-900">0</span>
+                                <span class="text-slate-400 font-bold text-sm">%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="inline-block px-3 py-1 bg-slate-100 rounded-full text-[10px] font-black text-slate-500 tracking-widest mb-2">ATS MATCH SCORE</div>
+                            <h2 class="text-xl font-extrabold text-slate-900">Analysis Complete</h2>
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1 max-w-xl">
+                        <p id="resultSummary" class="text-slate-600 text-xs font-medium leading-relaxed border-l-4 border-blue-500 pl-4"></p>
+                    </div>
+
+                    <div class="shrink-0 flex space-x-2">
+                        <button onclick="showView('uploadView')" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all">
+                            New Scan
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feedback Grid (Detailed Feedback below score card, side-by-side) -->
+            <div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 overflow-hidden">
+                
+                <!-- Pros -->
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                    <div class="p-4 border-b border-slate-50 flex items-center space-x-3 bg-emerald-50/30">
+                        <div class="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                            <i class="fas fa-check-circle text-emerald-500 text-sm"></i>
+                        </div>
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-wide">Key Strengths</h3>
+                    </div>
+                    <ul id="prosList" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll"></ul>
+                </div>
+
+                <!-- Cons -->
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                    <div class="p-4 border-b border-slate-50 flex items-center space-x-3 bg-rose-50/30">
+                        <div class="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                            <i class="fas fa-exclamation-triangle text-rose-500 text-sm"></i>
+                        </div>
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-wide">Critical Gaps</h3>
+                    </div>
+                    <ul id="consList" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll"></ul>
+                </div>
+
+                <!-- Improvements -->
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                    <div class="p-4 border-b border-slate-50 flex items-center space-x-3 bg-blue-50/30">
+                        <div class="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                            <i class="fas fa-tools text-blue-500 text-sm"></i>
+                        </div>
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-wide">Action Steps</h3>
+                    </div>
+                    <ul id="improvementsList" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll"></ul>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- View 1: Upload Page (Placed SECOND in DOM) -->
+        <section id="uploadView" class="view-transition active-view flex-col items-center justify-center h-full p-6">
+            <div class="text-center max-w-2xl mx-auto mb-8">
+                <h1 class="hero-text text-4xl font-extrabold text-slate-900 mb-4 leading-tight">Check Your <span class="text-blue-600">Resume</span> Performance</h1>
+                <p class="text-slate-500 text-sm font-medium">Get a professional ATS score and detailed feedback against specific job requirements or general industry standards.</p>
+            </div>
+
+            <div class="w-full max-w-4xl mx-auto">
+                <div class="bg-white rounded-[2rem] card-shadow p-8 border border-slate-100">
+                    <form id="analyzeForm" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- PDF Upload -->
+                        <div class="space-y-3 flex flex-col h-full">
+                            <label class="block text-xs font-bold text-slate-700 ml-1 uppercase tracking-wider">Upload Resume (PDF)</label>
+                            <div id="dropZone" class="group flex-1 border-2 border-dashed border-slate-200 rounded-3xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all flex flex-col items-center justify-center">
+                                <input type="file" id="resumeInput" name="resume" accept=".pdf" class="hidden">
+                                <div id="uploadContent">
+                                    <div class="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                                        <i class="fas fa-file-pdf text-2xl text-blue-500"></i>
+                                    </div>
+                                    <p class="text-slate-600 font-bold text-base">Click or drag & drop</p>
+                                    <p class="text-slate-400 text-xs mt-1">PDF version only</p>
+                                </div>
+                                <div id="fileSelected" class="hidden">
+                                    <div class="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                        <i class="fas fa-check text-2xl text-emerald-500"></i>
+                                    </div>
+                                    <p id="fileName" class="text-slate-900 font-bold text-sm truncate px-4 max-w-[200px]"></p>
+                                    <button type="button" id="changeFile" class="text-xs text-blue-600 font-bold mt-2 hover:underline">Replace file</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Job Description -->
+                        <div class="space-y-3 flex flex-col h-full">
+                            <label class="block text-xs font-bold text-slate-700 ml-1 uppercase tracking-wider">Target Job Description</label>
+                            <textarea id="jdInput" name="job_description" 
+                                class="flex-1 w-full bg-slate-50 border border-slate-200 rounded-3xl p-5 focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all text-sm leading-relaxed custom-scroll resize-none"
+                                placeholder="Paste the job role requirements here for a precision score..."></textarea>
+                        </div>
+
+                        <div class="md:col-span-2 mt-2">
+                            <button type="submit" id="submitBtn" class="w-full bg-slate-900 hover:bg-blue-600 text-white font-extrabold py-4 rounded-2xl shadow-xl shadow-slate-200 transition-all flex items-center justify-center space-x-3 transform active:scale-[0.98]">
+                                <span id="btnText">Analyze Resume Now</span>
+                                <div id="btnLoader" class="loader hidden"></div>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Notification -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 hidden bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl z-[100] flex items-center space-x-3">
+        <i class="fas fa-info-circle text-blue-400"></i>
+        <span id="toastMsg" class="font-bold text-xs"></span>
+    </div>
+
+    <script>
+        const form = document.getElementById('analyzeForm');
+        const resumeInput = document.getElementById('resumeInput');
+        const dropZone = document.getElementById('dropZone');
+        const uploadContent = document.getElementById('uploadContent');
+        const fileSelected = document.getElementById('fileSelected');
+        const fileName = document.getElementById('fileName');
+        const changeFile = document.getElementById('changeFile');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnLoader = document.getElementById('btnLoader');
+        const btnText = document.getElementById('btnText');
+        const navActions = document.getElementById('navActions');
+
+        // Page Routing
+        function showView(viewId) {
+            const uploadView = document.getElementById('uploadView');
+            const resultsView = document.getElementById('resultsView');
+            
+            if (viewId === 'resultsView') {
+                uploadView.classList.replace('active-view', 'hidden-view');
+                resultsView.classList.replace('hidden-view', 'active-view');
+                navActions.classList.remove('hidden');
+            } else {
+                resultsView.classList.replace('active-view', 'hidden-view');
+                uploadView.classList.replace('hidden-view', 'active-view');
+                navActions.classList.add('hidden');
+                form.reset();
+                uploadContent.classList.remove('hidden');
+                fileSelected.classList.add('hidden');
+            }
+        }
+
+        // File Selection Logic
+        dropZone.onclick = () => resumeInput.click();
+        resumeInput.onchange = (e) => { if (e.target.files.length) handleFile(e.target.files[0]); };
+
+        ['dragover', 'dragenter'].forEach(type => {
+            dropZone.addEventListener(type, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-blue-400', 'bg-blue-50');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(type => {
+            dropZone.addEventListener(type, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+            });
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                resumeInput.files = e.dataTransfer.files;
+                handleFile(file);
+            }
+        });
+
+        function handleFile(file) {
+            uploadContent.classList.add('hidden');
+            fileSelected.classList.remove('hidden');
+            fileName.textContent = file.name;
+        }
+
+        changeFile.onclick = (e) => {
+            e.stopPropagation();
+            resumeInput.value = '';
+            uploadContent.classList.remove('hidden');
+            fileSelected.classList.add('hidden');
+        };
+
+        // Analysis API Call
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            if (!resumeInput.files.length) return showToast("Please select a resume (PDF format).");
+            
+            submitBtn.disabled = true;
+            btnLoader.classList.remove('hidden');
+            btnText.textContent = "AI Analysis in Progress...";
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderResults(data);
+                    showView('resultsView');
+                } else {
+                    showToast(data.error || "Server processing failed.");
+                }
+            } catch (err) {
+                showToast("Connection failed. Ensure the backend is active.");
+            } finally {
+                submitBtn.disabled = false;
+                btnLoader.classList.add('hidden');
+                btnText.textContent = "Analyze Resume Now";
+            }
+        };
+
+        function renderResults(data) {
+            const score = data.ats_score || data.score || 0;
+            const pros = data.matching_skills || data.pros || [];
+            const cons = data.missing_critical_skills || data.cons || [];
+            const improvements = data.actionable_improvements || data.improvements || [];
+            const summary = data.experience_gap_analysis || data.summary || "Complete scan.";
+
+            let current = 0;
+            const scoreVal = document.getElementById('scoreValue');
+            const circle = document.getElementById('scoreCircle');
+            
+            const animation = setInterval(() => {
+                if (current >= score) {
+                    clearInterval(animation);
+                } else {
+                    current++;
+                    scoreVal.textContent = current;
+                    circle.style.setProperty('--progress', `${(current / 100) * 360}deg`);
+                }
+            }, 10);
+
+            document.getElementById('resultSummary').textContent = summary;
+            injectList('prosList', pros, 'fa-check text-emerald-500');
+            injectList('consList', cons, 'fa-times text-rose-500');
+            injectList('improvementsList', improvements, 'fa-arrow-right text-blue-500');
+        }
+
+        function injectList(elementId, items, iconClass) {
+            const list = document.getElementById(elementId);
+            list.innerHTML = items.map(text => `
+                <li class="flex items-start space-x-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100/50">
+                    <i class="fas ${iconClass} mt-1 flex-shrink-0 text-[10px]"></i>
+                    <span class="text-slate-600 text-[11px] font-bold leading-relaxed">${text}</span>
+                </li>
+            `).join('');
+            if(!items.length) list.innerHTML = '<p class="text-slate-400 text-[10px] italic">No data detected for this section.</p>';
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toastMsg').textContent = msg;
+            t.classList.remove('hidden');
+            setTimeout(() => t.classList.add('hidden'), 4000);
+        }
+    </script>
+</body>
+</html>
